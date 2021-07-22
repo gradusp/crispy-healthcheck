@@ -1,6 +1,6 @@
 //+build !linux
 
-package tcp
+package network
 
 //SetSocketMark ...
 func (utils sockUtils) SetSocketMark(fd, mark int) error {

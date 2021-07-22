@@ -6,6 +6,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/gradusp/crispy-healthcheck/internal/pkg/network"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,7 +36,7 @@ func Test_DialerFAIL(t *testing.T) {
 	d := NewDialer()
 	var conn net.Conn
 	var err error
-	conn, err = d.DialContext(ctx, TCP, addr)
+	conn, err = d.DialContext(ctx, network.TCP, addr)
 	assert.Errorf(t, err, "DialContext on '%s'", addr)
 	if err == nil {
 		_ = conn.Close()

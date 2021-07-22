@@ -290,9 +290,9 @@
     "healthcheckIcmpCheckRequest": {
       "type": "object",
       "properties": {
-        "ip": {
+        "host": {
           "type": "string",
-          "title": "IP-адрес [IPv4. IPv6]"
+          "title": "IP-адрес IPv4|IPv6 или hostname"
         },
         "timeout": {
           "type": "string"

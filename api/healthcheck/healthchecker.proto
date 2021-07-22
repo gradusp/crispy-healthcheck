@@ -138,8 +138,8 @@ message TcpCheckRequest {
 
 //IcmpCheckRequest запрос ICMP health check
 message IcmpCheckRequest {
-  //IP-адрес [IPv4. IPv6]
-  string ip = 1;
+  //IP-адрес IPv4|IPv6 или hostname
+  string host = 1;
   google.protobuf.Duration timeout = 2;
   //маркируем исходящий сокет - свойство необходимое для маршрутизации запроса в реальный backend
   int64 socket_mark = 3;
