@@ -157,6 +157,7 @@ loop:
 
 func (ass httpCheckAssist) getRequestTmo() (time.Duration, error) {
 	const api = "getRequestTmo"
+
 	t := ass.req.GetTimeout()
 	if t == nil {
 		return 0, nil

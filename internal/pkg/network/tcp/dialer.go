@@ -3,12 +3,14 @@ package tcp
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"net"
 	"os"
 	"runtime"
 	"strings"
 	"syscall"
+
+	"github.com/gradusp/crispy-healthcheck/internal/pkg/network"
+	"github.com/pkg/errors"
 )
 
 //Dialer makes TCP dialer
@@ -35,21 +37,21 @@ func (dialer *tcpDialerImpl) Dial(network, address string) (net.Conn, error) {
 	return dialer.DialContext(context.Background(), network, address)
 }
 
-func (dialer *tcpDialerImpl) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+func (dialer *tcpDialerImpl) DialContext(ctx context.Context, networkName, address string) (net.Conn, error) {
 	const api = "TCP.Dial"
 
-	switch strings.ToLower(network) {
-	case TCP, TCP4, TCP6:
+	switch strings.ToLower(networkName) {
+	case network.TCP, network.TCP4, network.TCP6:
 		break
 	default:
-		return nil, errors.Wrap(net.UnknownNetworkError(network), api)
+		return nil, errors.Wrap(net.UnknownNetworkError(networkName), api)
 	}
 
 	var (
 		err      error
 		socketD  int
 		f        *os.File
-		addrInfo tcpAddrInfo
+		addrInfo network.TCPAddrInfo
 	)
 	defer func() {
 		if socketD > 0 {
@@ -59,28 +61,28 @@ func (dialer *tcpDialerImpl) DialContext(ctx context.Context, network, address s
 			_ = f.Close()
 		}
 	}()
-	if addrInfo, err = SockUtils.getTcpSocketInfo(address); err != nil {
+	if addrInfo, err = network.SockUtils.GetTcpSocketInfo(address); err != nil {
 		return nil, errors.Wrap(&net.AddrError{Err: err.Error(), Addr: address}, api)
 	}
-	if socketD, err = syscall.Socket(addrInfo.domain, syscall.SOCK_STREAM, 0); err != nil {
+	if socketD, err = syscall.Socket(addrInfo.Domain, syscall.SOCK_STREAM, 0); err != nil {
 		return nil, errors.Wrap(os.NewSyscallError("socket", err), api)
 	}
 	syscall.CloseOnExec(socketD)
 	options := dialer.tcpDialerOptions
 	if options.rdSocketTmo > 0 {
-		err = SockUtils.SetSocketRdTimeout(socketD, options.rdSocketTmo)
+		err = network.SockUtils.SetSocketRdTimeout(socketD, options.rdSocketTmo)
 		if err != nil {
 			return nil, errors.Wrap(err, api)
 		}
 	}
 	if options.wrSocketTmo > 0 {
-		err = SockUtils.SetSocketWrTimeout(socketD, options.wrSocketTmo)
+		err = network.SockUtils.SetSocketWrTimeout(socketD, options.wrSocketTmo)
 		if err != nil {
 			return nil, errors.Wrap(err, api)
 		}
 	}
 	if options.sockMark != 0 {
-		err = SockUtils.SetSocketMark(socketD, options.sockMark)
+		err = network.SockUtils.SetSocketMark(socketD, options.sockMark)
 		if err != nil {
 			return nil, errors.Wrap(err, api)
 		}
@@ -90,7 +92,7 @@ func (dialer *tcpDialerImpl) DialContext(ctx context.Context, network, address s
 	go func() {
 		var e error
 		defer close(chDone)
-		sa := addrInfo.makeSocketAddress()
+		sa := addrInfo.SocketAddress()
 		for {
 			if e = syscall.Connect(socketD, sa); e == nil {
 				break
@@ -124,17 +126,17 @@ func (dialer *tcpDialerImpl) DialContext(ctx context.Context, network, address s
 	if rsa, err = syscall.Getpeername(socketD); err != nil {
 		return nil, errors.Wrap(err, api)
 	}
-	name := fmt.Sprintf("%s %s -> %s", addrInfo.network,
-		SockUtils.SockAddrStringer(lsa), SockUtils.SockAddrStringer(rsa))
+	name := fmt.Sprintf("%s %s -> %s", addrInfo.Network,
+		network.SockUtils.SockAddrStringer(lsa), network.SockUtils.SockAddrStringer(rsa))
 	if f = os.NewFile(uintptr(socketD), name); f == nil {
 		return nil, errors.Errorf("%s: unable os.NewFile from socket", api)
 	}
 	socketD = -1
-	retConn := new(connWrapper)
+	retConn := new(network.ConnWrapper)
 	if retConn.Conn, err = net.FileConn(f); err != nil {
 		return nil, errors.Wrap(err, api)
 	}
-	runtime.SetFinalizer(retConn, func(o *connWrapper) {
+	runtime.SetFinalizer(retConn, func(o *network.ConnWrapper) {
 		_ = o.Close()
 	})
 	return retConn, nil
