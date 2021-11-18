@@ -15,7 +15,7 @@ func Test_ICMP_ListenUDP(t *testing.T) {
 	}
 	addr := "localhost"
 	for _, nw := range networks {
-		conn, err := ListenPacket(nw, addr, 1)
+		conn, err := ListenPacket(nw, addr, 0)
 		assert.NoErrorf(t, err, "on network '%s': %v", nw, err)
 		if err != nil {
 			return
