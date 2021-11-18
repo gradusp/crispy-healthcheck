@@ -17,6 +17,8 @@ import (
 	"github.com/gradusp/crispy-healthcheck/internal/pkg/network/icmp"
 	srvDef "github.com/gradusp/crispy-healthcheck/pkg/healthcheck"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	netIcmp "golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
@@ -24,34 +26,42 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (hcImpl *healthCheckImpl) IcmpCheck(ctx context.Context, req *srvDef.IcmpCheckRequest) (*srvDef.HealthCheckResponse, error) {
-	const api = "API.HealthCheck.IcmpCheck"
+//IcmpCheck impl service
+func (srv *healthCheckerImpl) IcmpCheck(ctx context.Context, req *srvDef.IcmpCheckRequest) (resp *srvDef.HealthCheckResponse, err error) {
+	defer func() {
+		err = srv.correctError(err)
+	}()
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("host", req.GetHost()))
 
 	ass := icmpCheckAssist{req: req}
-	tmo, err := ass.getRequestTmo()
-	if err != nil {
-		e := status.Errorf(codes.InvalidArgument, "invalid 'timeout' is provided: %s", err)
-		return nil, errors.Wrap(e, api)
+	var tmo time.Duration
+	if tmo, err = ass.getRequestTmo(); err != nil {
+		err = status.Errorf(codes.InvalidArgument, "invalid 'timeout' is provided: %s", err)
+		return
 	}
-
 	ctx1 := ctx
 	if tmo > 0 {
+		span.SetAttributes(attribute.Stringer("timeout", tmo))
 		var cancel func()
 		ctx1, cancel = context.WithTimeout(ctx, tmo)
 		defer cancel()
 	}
 
+	resp = new(srvDef.HealthCheckResponse)
+	srv.addSpanDbgEvent(ctx, span, "processEchoExchange")
 	err = ass.processEchoExchange(ctx1)
 	if err == nil || errors.As(err, new(*net.OpError)) {
-		response := new(srvDef.HealthCheckResponse)
-		response.IsOk = err == nil
-		return response, nil
+		resp.IsOk = err == nil
+		err = nil
+		return
 	}
 	if e := new(*net.DNSError); errors.As(err, e) {
-		return nil, status.Errorf(codes.NotFound, "%s: on host('%s'): %s",
-			api, req.GetHost(), (*e).Error())
+		err = status.Errorf(codes.NotFound, "on host('%s') -> dns-err: %s",
+			req.GetHost(), (*e).Error())
 	}
-	return nil, errors.Wrap(err, api)
+	return //nolint:nakedret
 }
 
 // ------------------------------------------------- A S S I S T A N T S are Below -------------------------------------

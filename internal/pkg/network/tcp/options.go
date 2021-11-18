@@ -35,9 +35,12 @@ type OptSocketWrTimeout struct {
 
 // --------------------------------------------- IMPL -------------------------------------------
 
-var _ DialerOption = OptSocketMark{}
-var _ DialerOption = OptSocketRdTimeout{}
-var _ DialerOption = OptSocketWrTimeout{}
+var (
+	_ DialerOption = OptSocketConnectTimeout{}
+	_ DialerOption = OptSocketMark{}
+	_ DialerOption = OptSocketRdTimeout{}
+	_ DialerOption = OptSocketWrTimeout{}
+)
 
 type tcpDialerOptions struct { //nolint:revive
 	sockMark    int
@@ -49,6 +52,8 @@ type tcpDialerOptions struct { //nolint:revive
 func (options *tcpDialerOptions) fill(opts ...DialerOption) {
 	for _, o := range opts {
 		switch v := o.(type) {
+		case OptSocketConnectTimeout:
+			options.connectTmo = v.Timeout
 		case OptSocketMark:
 			options.sockMark = v.SocketMark
 		case OptSocketRdTimeout:

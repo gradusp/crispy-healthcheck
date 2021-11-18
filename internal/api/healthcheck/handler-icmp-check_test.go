@@ -2,7 +2,6 @@ package healthcheck
 
 import (
 	"context"
-	"errors"
 	"net"
 	"testing"
 	"time"
@@ -25,7 +24,7 @@ func Test_IcmpCheck_LocalHost_OK(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	apiServer := &healthCheckImpl{appCtx: context.Background()}
+	apiServer := &healthCheckerImpl{appCtx: context.Background()}
 	req := new(srvDef.IcmpCheckRequest)
 	for _, ip := range ips {
 		req.Host = ip.String()
@@ -64,40 +63,41 @@ func Test_IcmpCheck_OnHost_OK(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	apiServer := &healthCheckImpl{appCtx: ctx}
+	apiServer := &healthCheckerImpl{appCtx: ctx}
 	req := new(srvDef.IcmpCheckRequest)
 	req.Timeout = durationpb.New(time.Second)
 
-	okFromIP, okFromHost := 0, 0
 	for h, ips := range host2IP {
 		req.Host = h
 		resp, err := apiServer.IcmpCheck(ctx, req)
-		if errors.Is(err, context.DeadlineExceeded) {
+		if status.Code(errors2.Cause(err)) == codes.DeadlineExceeded {
 			continue
 		}
-		okFromHost++
-		assert.Equalf(t, true, resp.GetIsOk(), "H:'%s'", h)
+		if !assert.Equalf(t, true, resp.GetIsOk(), "H:'%s'", h) {
+			continue
+		}
+		succeeded := 0
 		for _, ip := range ips {
 			req.Host = ip.String()
 			resp, err = apiServer.IcmpCheck(ctx, req)
-			if errors.Is(err, context.DeadlineExceeded) {
+			if status.Code(errors2.Cause(err)) == codes.DeadlineExceeded {
 				continue
 			}
-			assert.NoErrorf(t, err, "H:'%s', IP:%s", h, ip)
-			if err != nil {
-				return
+			if !assert.NoErrorf(t, err, "H:'%s', IP:%s", h, ip) {
+				continue
 			}
-			okFromIP++
-			assert.Equalf(t, true, resp.GetIsOk(), "H:'%s', IP:%s", h, ip)
+			if !assert.Equalf(t, true, resp.GetIsOk(), "H:'%s', IP:%s", h, ip) {
+				continue
+			}
+			succeeded++
 		}
+		assert.Truef(t, succeeded > 0, "H:'%s'", h)
 	}
-	assert.NotEqual(t, 0, okFromHost)
-	assert.NotEqual(t, 0, okFromIP)
 }
 
 func Test_IcmpCheck_BadHost(t *testing.T) {
 	ctx := context.Background()
-	apiServer := &healthCheckImpl{appCtx: ctx}
+	apiServer := &healthCheckerImpl{appCtx: ctx}
 	req := new(srvDef.IcmpCheckRequest)
 	req.Timeout = durationpb.New(time.Second)
 	req.Host = "ka-ka-host"

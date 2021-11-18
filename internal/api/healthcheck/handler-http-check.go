@@ -15,38 +15,56 @@ import (
 
 	"github.com/gradusp/crispy-healthcheck/internal/pkg/network/tcp"
 	srvDef "github.com/gradusp/crispy-healthcheck/pkg/healthcheck"
+	"github.com/gradusp/go-platform/pkg/jsonview"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func (hcImpl *healthCheckImpl) HttpCheck(ctx context.Context, req *srvDef.HttpCheckRequest) (*srvDef.HealthCheckResponse, error) { //nolint:revive
-	const api = "API.HealthCheck.HttpCheck"
+//HttpCheck impl service
+func (srv *healthCheckerImpl) HttpCheck(ctx context.Context, req *srvDef.HttpCheckRequest) (resp *srvDef.HealthCheckResponse, err error) { //nolint:revive
+	defer func() {
+		err = srv.correctError(err)
+	}()
+
+	span := trace.SpanFromContext(ctx)
 
 	ass := httpCheckAssist{req: req}
 	var tmo time.Duration
-	addr, err := ass.makeRequestAddress()
-	if err != nil {
-		err = status.Errorf(codes.InvalidArgument, "invalid 'AddressToCheck' is provided: %s", err)
-		return nil, errors.Wrap(err, api)
-	}
-	if tmo, err = ass.getRequestTmo(); err != nil {
-		e := status.Errorf(codes.InvalidArgument, "invalid 'timeout' is provided: %s", err)
-		return nil, errors.Wrap(e, api)
-	}
+	var addr string
 
+	srv.addSpanDbgEvent(ctx, span, "construct-request",
+		trace.WithAttributes(attribute.Stringer("request", jsonview.Stringer(req))),
+	)
+	if addr, err = ass.makeRequestAddress(); err != nil {
+		err = status.Errorf(codes.InvalidArgument, "invalid 'AddressToCheck' is provided: %v", err)
+		return
+	}
+	span.SetAttributes(attribute.String("check-address", addr))
+	if tmo, err = ass.getRequestTmo(); err != nil {
+		err = status.Errorf(codes.InvalidArgument, "invalid 'timeout' is provided: %s", err)
+		return
+	}
 	httpCli := ass.makeHTTPClient(tmo)
 	var httpReq *http.Request
 	if httpReq, err = ass.makeHTTPRequest(ctx, addr); err != nil {
-		return nil, errors.Wrap(err, api)
+		return
 	}
+	span.SetAttributes(
+		attribute.Stringer("URL", httpReq.URL),
+		attribute.String("Method", httpReq.Method),
+	)
 	if tmo > 0 {
+		span.SetAttributes(attribute.Stringer("timeout", tmo))
 		ctx1, c := context.WithTimeout(ctx, tmo)
 		defer c()
 		httpReq = httpReq.WithContext(ctx1)
 	}
 	var httpResponse *http.Response
-	ourResponse := new(srvDef.HealthCheckResponse)
+	resp = new(srvDef.HealthCheckResponse)
+	srv.addSpanDbgEvent(ctx, span, "process-request")
 	if httpResponse, err = httpCli.Do(httpReq); httpResponse != nil {
 		err = nil
 		if httpResponse.Body != nil {
@@ -54,10 +72,10 @@ func (hcImpl *healthCheckImpl) HttpCheck(ctx context.Context, req *srvDef.HttpCh
 		}
 		if ass.statusCodeIsGood(httpResponse.StatusCode) {
 			e := ass.checkExpectedPayload(httpResponse.Body)
-			ourResponse.IsOk = e == nil
+			resp.IsOk = e == nil
 		}
 	}
-	return ourResponse, errors.Wrap(err, api)
+	return //nolint:nakedret
 }
 
 type httpCheckAssist struct {
@@ -65,7 +83,7 @@ type httpCheckAssist struct {
 }
 
 func (ass httpCheckAssist) makeHTTPRequest(ctx context.Context, host string) (*http.Request, error) {
-	const api = "makeHTTPRequest"
+	const api = "make-HTTP-request"
 
 	queryURI := strings.Trim(ass.req.GetQueryUri(), `\/`)
 	uri := fmt.Sprintf("%s://%s/%s", strings.ToLower(ass.req.GetUseScheme().String()), host, queryURI)
@@ -85,7 +103,7 @@ func (ass httpCheckAssist) makeHTTPRequest(ctx context.Context, host string) (*h
 }
 
 func (ass httpCheckAssist) checkExpectedPayload(responseBody io.Reader) error {
-	const api = "checkExpectedPayload"
+	const api = "check-expected-payload"
 
 	type isDict = map[string]interface{}
 	type isSlice = []interface{}
