@@ -8,41 +8,53 @@ import (
 	"github.com/gradusp/crispy-healthcheck/internal/pkg/network/tcp"
 	srvDef "github.com/gradusp/crispy-healthcheck/pkg/healthcheck"
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func (hcImpl *healthCheckImpl) TcpCheck(ctx context.Context, req *srvDef.TcpCheckRequest) (*srvDef.HealthCheckResponse, error) { ////nolint:revive
-	const api = "API.HealthCheck.TcpCheck"
+//TcpCheck impl service
+func (srv *healthCheckerImpl) TcpCheck(ctx context.Context, req *srvDef.TcpCheckRequest) (resp *srvDef.HealthCheckResponse, err error) { ////nolint:revive
+	defer func() {
+		err = srv.correctError(err)
+	}()
 
-	var err error
 	var tmo time.Duration
 	addr := req.GetAddressToCheck()
 	mark := req.GetSocketMark()
 
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(
+		attribute.String("addressToCheck", addr),
+		attribute.Int64("socketMark", mark),
+	)
+
 	if dur := req.GetTimeout(); dur != nil {
 		err = dur.CheckValid()
 		if err != nil {
-			e := status.Error(codes.InvalidArgument, "invalid 'timeout' is provided from request")
-			return nil, errors.Wrapf(e, "%s: %s", api, err.Error())
+			err = status.Errorf(codes.InvalidArgument,
+				"invalid 'timeout' is provided: %v", err)
+			return
 		}
 		tmo = dur.AsDuration()
+		span.SetAttributes(
+			attribute.Stringer("timeout", tmo),
+		)
 	}
 	d := tcp.NewDialer(tcp.OptSocketMark{SocketMark: int(mark)},
 		tcp.OptSocketConnectTimeout{Timeout: tmo})
 	var conn net.Conn
 	conn, err = d.DialContext(ctx, "tcp", addr)
-	ret := new(srvDef.HealthCheckResponse)
+	resp = new(srvDef.HealthCheckResponse)
 	if err == nil {
 		_ = conn.Close()
-		ret.IsOk = true
+		resp.IsOk = true
 	} else {
 		var exp tcp.ErrUnableConnect
 		if errors.As(err, &exp) {
 			err = nil
-		} else if errors.As(err, context.DeadlineExceeded) || errors.As(err, context.Canceled) {
-			err = status.FromContextError(err).Err()
 		}
 	}
-	return ret, errors.Wrap(err, api)
+	return //nolint:nakedret
 }

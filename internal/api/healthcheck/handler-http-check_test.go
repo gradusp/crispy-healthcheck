@@ -167,7 +167,7 @@ func Test_HttpCheck(t *testing.T) {
 
 	time.Sleep(time.Second)
 	ctx := context.Background()
-	apiServer := &healthCheckImpl{appCtx: ctx}
+	apiServer := &healthCheckerImpl{appCtx: ctx}
 	request := new(srvDef.HttpCheckRequest)
 	request.AddressToCheck = host
 	request.UseMethod = srvDef.HttpCheckRequest_GET

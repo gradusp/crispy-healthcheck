@@ -18,7 +18,7 @@ func Test_TcpCheckTRUE(t *testing.T) {
 	defer lis.Close() //nolint
 	addr := lis.Addr().String()
 	ctx := context.Background()
-	srv := &healthCheckImpl{appCtx: ctx}
+	srv := &healthCheckerImpl{appCtx: ctx}
 	req := &srvDef.TcpCheckRequest{
 		AddressToCheck: addr,
 	}
@@ -34,7 +34,7 @@ func Test_TcpCheckTRUE(t *testing.T) {
 func Test_TcpCheckFALSE(t *testing.T) {
 	addr := "127.0.0.1:5004"
 	ctx := context.Background()
-	srv := &healthCheckImpl{appCtx: ctx}
+	srv := &healthCheckerImpl{appCtx: ctx}
 	req := &srvDef.TcpCheckRequest{
 		AddressToCheck: addr,
 	}
