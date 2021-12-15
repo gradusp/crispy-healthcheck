@@ -120,8 +120,8 @@ func (inf TCPAddrInfo) SocketAddress() syscall.Sockaddr {
 //GetTcpSocketInfo ...
 func (utils sockUtils) GetTcpSocketInfo(ipPortAddress string) (TCPAddrInfo, error) { //nolint:revive
 	const api = "GetTcpSocketInfo"
-	var ret TCPAddrInfo
 
+	var ret TCPAddrInfo
 	host, port, err := net.SplitHostPort(ipPortAddress)
 	if err != nil {
 		return ret, errors.Wrap(err, api)
